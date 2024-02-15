@@ -148,7 +148,7 @@ get_csv_data($after_date, $before_date, $sortby, \%mc_data);
 output_result($sortby, \%mc_data, $line_limit, $verbose);
 
 
-print "\n\nDone!\n";
+#print "\n\nDone!\n";
 
 
 ######################
@@ -257,15 +257,7 @@ sub get_csv_data() {
 #####################
 sub output_result {
     my ($sortby, $mc_data, $line_number, $verbose) = @_;
-    my $lc=0;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-     
+
     if ($sortby eq "module") { #sort by module
 	if($verbose) {
 	    if($line_limit != -1) {
