@@ -20,6 +20,9 @@ my $verbose=0;
 
 my %opts=();
 my $VERSION='20240123';
+my $EARLIEST='2017-09-01'; # the earliest date start collecting modcount stats.
+my $LATEST=localtime->strftime('%Y-%m-%d');
+
 
 ########################################################
 # USAGE
@@ -39,24 +42,25 @@ my $USAGE =<<USAGE;
 
          where:
 
-             before_date: yyyy-mm-dd; end date of the date range, if not present, will be the set to current date
-             after_date: yyyy-mm-dd; start date of the date range, if not present, will be one month earlier than before_date
+             before_date: yyyy-mm-dd; end date of the date range, if not present, or the date given is beyond current date, it will be the set to current date
+             after_date: yyyy-mm-dd; start date of the date range, 1) if not present, will be one month earlier than before_date;2) the earliest date is 2017-09-01
              sortby: the field we will use to sort the count, by default, using a decreasing order. 
-                 module: sort module usage count accord to module, from the most used module to the least 
-                 proj: sort by module usage count by project, from the most used project to least
-                 user: sort by module usage count by user, from the most frequent user to the least
+                 module: sort module usage count according to module, from the most used module to the least 
+                 proj: sort by module usage count according to project, from the most used project to least
+                 user: sort by module usage count according to user, from the most frequent user to the least
              line_limit: total lines to display in the result, 
                  default is 10
                  -1 means show all
              verbose: if verbose is true, print out all the detailed count data at the individula module/project/user level. All the numbers in the parentheses are the number of usage count associated. Otherwise, print only the top level numbers. 
-             version: show the version info. of the tool
-             help:  Prints out this helpful message
+             version: show the version of the tool
+             help:  Prints out this help message
 
-    Example:
+    Examples:
+        query_modcount
         query_modcount -a 2023-10-01 -b 2023-12-31 -s proj
         query_modcount --after_date 2023-10-01 --before_date 2023-12-31 --sortby proj
-        query_modcount -a 2023-10-01 -b 2023-12-31 -s proj -n 20
-        query_modcount -a 2023-10-01 -b 2023-12-31 -s proj -n -1
+        query_modcount -a 2023-10-01 -b 2023-12-31 -s user -n 20
+        query_modcount -a 2023-10-01 -b 2023-12-31 -s user -n -1
         query_modcount -V
         query_modcount -h
 
@@ -103,10 +107,18 @@ elsif ( defined($opts{before_date}) ) {
 }
 else {
     # both start/end dates are not defined, set one month default from current date:
-    my $curtime = localtime;
-    my $curdate=$curtime->strftime('%Y-%m-%d');
-    $before_date=$curdate;
+    $before_date=$LATEST; # set today's date
     $after_date=Time::Piece->strptime($before_date, '%Y-%m-%d')->add_months(-1) -> strftime('%Y-%m-%d');
+}
+
+# check date boundary:
+die "start date can not be earlier than $EARLIEST\n" if($after_date lt $EARLIEST);
+if( $before_date gt $LATEST) {
+    $before_date=$LATEST;
+    print "\n**********************\n";
+    print "WARNING: end date provided is beyond the current date. Reset to today's date, $LATEST";
+    print "\n**********************\n";
+
 }
 
 if( defined($opts{sortby})) {

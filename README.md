@@ -32,7 +32,7 @@ query SCC modcount data to provide usage info. sorted by module, project or user
         query_modcount
         query_modcount -a 2023-10-01 -b 2023-12-31 -s proj
         query_modcount --after_date 2023-10-01 --before_date 2023-12-31 --sortby proj
-        query_modcount -a 2023-10-01 -b 2023-12-31 -s proj -n 20
-        query_modcount -a 2023-10-01 -b 2023-12-31 -s proj -n -1
+        query_modcount -a 2023-10-01 -b 2023-12-31 -s user -n 20
+        query_modcount -a 2023-10-01 -b 2023-12-31 -s user -n -1
         query_modcount -V
         query_modcount -h
