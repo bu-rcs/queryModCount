@@ -38,6 +38,9 @@ my $USAGE =<<USAGE;
             [ --line_limit|-n total_lines_to_show ]
             [ --verbose|-v ] 
             [ --version|-V ]
+            [ --module|-m modname]
+            [ --user|-u login]
+            [ --proj|-p projname]
             [ --help|-h]
 
          where:
@@ -53,6 +56,9 @@ my $USAGE =<<USAGE;
                  -1 means show all
              verbose: if verbose is true, print out all the detailed count data at the individula module/project/user level. All the numbers in the parentheses are the number of usage count associated. Otherwise, print only the top level numbers. 
              version: show the version of the tool
+             module: specific module to look for, if given in modname/modver form, then the result will also be limited to the particular version only
+             user: look for specific user by his/her login name
+             proj: look for specific project usage count 
              help:  Prints out this help message
 
     Examples:
@@ -76,6 +82,9 @@ GetOptions(
     "line_limit|n=i" => \$opts{line},
     "version|V" => \$opts{version},
     "verbose|v" => \$opts{verbose},
+    "module|m=s" => \$opts{modname},
+    "user|u=s" => \$opts{login},
+    "proj|p=s" => \$opts{projname},    
     );
 
 if($opts{help}) {
@@ -93,25 +102,27 @@ if($opts{version}) {
 if ( defined($opts{after_date}) ) {
     $after_date=$opts{after_date};
     # if end date is not provided, then use 1 month default range
-    if( !defined($opts{before_date}) ) {
-	$before_date=Time::Piece->strptime($after_date, '%Y-%m-%d')->add_months(1) -> strftime('%Y-%m-%d');
+    if( defined($opts{before_date}) ) {
+	$before_date=$opts{before_date};
     }
     else {
-	$before_date=$opts{before_date};
+    #	$before_date=Time::Piece->strptime($after_date, '%Y-%m-%d')->add_years(1) -> strftime('%Y-%m-%d');
+	$before_date=$LATEST; # set the default end time to be today. 
     }
 }
 elsif ( defined($opts{before_date}) ) {
     $before_date=$opts{before_date};
-    # since after_date not defined, we set the 1 month range default:
-    $after_date=Time::Piece->strptime($before_date, '%Y-%m-%d')->add_months(-1) -> strftime('%Y-%m-%d');
+    # since after_date not defined, we set the 1 year range by default:
+    $after_date=Time::Piece->strptime($before_date, '%Y-%m-%d')->add_years(-1) -> strftime('%Y-%m-%d');
 }
 else {
-    # both start/end dates are not defined, set one month default from current date:
+    # both start/end dates are not defined, set one year default from current date:
     $before_date=$LATEST; # set today's date
-    $after_date=Time::Piece->strptime($before_date, '%Y-%m-%d')->add_months(-1) -> strftime('%Y-%m-%d');
+    $after_date=Time::Piece->strptime($before_date, '%Y-%m-%d')->add_years(-1) -> strftime('%Y-%m-%d');
 }
 
 # check date boundary:
+die "start date can not be later than end date\n" if($after_date gt $before_date);
 die "start date can not be earlier than $EARLIEST\n" if($after_date lt $EARLIEST);
 if( $before_date gt $LATEST) {
     $before_date=$LATEST;
@@ -141,7 +152,7 @@ if( defined($opts{line})) {
     $line_limit = $opts{line};
 }
 else {
-    $line_limit = 10; # set default line limit = 10
+    $line_limit = -1; # set default to return all line
 }
 
 if( defined($opts{verbose})) {
@@ -204,6 +215,31 @@ sub get_csv_data() {
     chdir($data_dir);
     system("cat " . join(" ", @csv_list) . " > $tmp_csv");
     chdir($work_dir);
+    if (defined($opts{modname}) && ($opts{modname} ne "")) {
+	my $tmp2=$tmp_csv . ".2";
+	my ($mname, $mver) = split("/", $opts{modname});
+	if (defined($mver)) {
+	   # use -F option to match literally
+	   system("grep -F '$mname' $tmp_csv | grep -F '$mver' > $tmp2");
+	   system("mv $tmp2 $tmp_csv");
+	}
+	else {
+	   system("grep '$opts{modname}' $tmp_csv > $tmp2");
+	   system("mv $tmp2 $tmp_csv");
+	}
+    }
+    
+    if (defined($opts{login}) && ($opts{login} ne "")) {
+	my $tmp2=$tmp_csv . ".2";
+	system("grep '$opts{login}' $tmp_csv > $tmp2");
+	system("mv $tmp2 $tmp_csv");
+    }
+
+    if (defined($opts{projname}) && ($opts{projname} ne "")) {
+	my $tmp2=$tmp_csv . ".2";
+	system("grep '$opts{login}' $tmp_csv > $tmp2");
+	system("mv $tmp2 $tmp_csv");
+    }
 
     # simple code:
 #    system("cat $data_dir/*.csv > $tmp_csv");    
@@ -241,6 +277,8 @@ sub get_csv_data() {
 	    next if $line=~/^date/;
 	    next if $cols[0] lt $after;
 	    last if $cols[0] gt $before;
+#	    next if (defined($opts{projname}) && ($cols[3] ne $opts{projname})); 
+	    
 	    # here we including everything
 	    $mc_data->{$cols[3]}{mod_list}{$cols[1] . "/" . $cols[2]}+=$cols[6];
 	    $mc_data->{$cols[3]}{user_list}{$cols[4]}+=$cols[6];
@@ -254,6 +292,8 @@ sub get_csv_data() {
 	    next if $line=~/^date/;
 	    next if $cols[0] lt $after;
 	    last if $cols[0] gt $before;
+#	    next if (defined($opts{login}) && ($cols[4] ne $opts{login})); 
+
 	    # here we including everything
 	    $mc_data->{$cols[4]}{mod_list}{$cols[1] . "/" . $cols[2]}+=$cols[6];
 	    $mc_data->{$cols[4]}{proj_list}{$cols[3]}+=$cols[6];
@@ -262,8 +302,6 @@ sub get_csv_data() {
 	close IN;
     }
 
-    # clean up:
-    system("rm -f $tmp_csv");
 }
 
 #####################
