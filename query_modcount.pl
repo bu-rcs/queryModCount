@@ -74,6 +74,33 @@ USAGE
 #
 ######################################################
 
+########################################################
+# USAGE_SHORT
+#
+my $USAGE_SHORT =<<USAGE_SHORT;
+
+     Usage:
+
+         query_modcount 
+            [ --before_date|-b before_date ]
+            [ --after_date|-a after_date ]
+            [ --sortby|-s module|proj|user ]
+            [ --line_limit|-n total_lines_to_show ]
+            [ --verbose|-v ] 
+            [ --version|-V ]
+            [ --module|-m modname]
+            [ --user|-u login]
+            [ --proj|-p projname]
+            [ --help|-h]
+
+USAGE_SHORT
+#
+######################################################
+
+# check if the command is called without any arguments
+# if so, show the help message:
+die $USAGE_SHORT if @ARGV < 1;
+
 GetOptions(
     "help|h" => \$opts{help},
     "after_date|a=s" => \$opts{after_date},
