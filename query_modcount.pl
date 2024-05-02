@@ -4,8 +4,8 @@ use strict;
 use Getopt::Long qw(GetOptions);
 use Time::Piece;
 use Time::Seconds;
-use lib "/usr/local/sge/scv/nodes";
-use SCC_SGE_Data;
+#use lib "/usr/local/sge/scv/nodes";
+#use SCC_SGE_Data;
 use Cwd qw(getcwd);
 
 my %mc_data = ();
@@ -14,14 +14,14 @@ my %mc_data = ();
 
 my $before_date = ""; # date range start date
 my $after_date = ""; # date range end date
-my $sortby=""; # default sort by module count in decreasing order, other possible choices can be sorted by project, or by user
-my $line_limit=10;
+my $sortby="module"; # default sort by module count in decreasing order, other possible choices can be sorted by project, or by user
+my $line_limit=-1;
 my $verbose=0;
 
 my %opts=();
 my $VERSION='20240123';
 my $EARLIEST='2017-09-01'; # the earliest date start collecting modcount stats.
-my $LATEST=localtime->strftime('%Y-%m-%d');
+my $LATEST=(Time::Piece->new-ONE_DAY)-> strftime('%Y-%m-%d'); # the last day has module count data available is yesterday.Today's data has not yet been calculated and recorded.
 
 
 ########################################################
@@ -61,14 +61,19 @@ my $USAGE =<<USAGE;
              proj: look for specific project usage count 
              help:  Prints out this help message
 
-    Examples:
+    Example #1 get the brief/long description about the command: 
         query_modcount
-        query_modcount -a 2023-10-01 -b 2023-12-31 -s proj
-        query_modcount --after_date 2023-10-01 --before_date 2023-12-31 --sortby proj
+        query_modcount -h
+    Example #2 get module statistics sort by project name:
+        query_modcount -s proj # all modules for all time
+        query_modcount -a 2023-10-01 -s proj # all modules after 2023-10-01
+        query_modcount --after_date 2023-10-01 --before_date 2023-12-31 --sortby proj -v -p ms-dental  # get detailed usage for 'ms-dental' project from 2023-10-01 to 2023-12-31
+    Example #3 get module statistics sort by user name:
+        query_modcount -u user
         query_modcount -a 2023-10-01 -b 2023-12-31 -s user -n 20
         query_modcount -a 2023-10-01 -b 2023-12-31 -s user -n -1
         query_modcount -V
-        query_modcount -h
+        
 
 USAGE
 #
@@ -178,15 +183,9 @@ else {
 if( defined($opts{line})) {
     $line_limit = $opts{line};
 }
-else {
-    $line_limit = -1; # set default to return all line
-}
 
 if( defined($opts{verbose})) {
     $verbose = $opts{verbose};
-}
-else {
-    $verbose = 0; # set default to output only briefs at the top level
 }
 
 
@@ -234,8 +233,9 @@ sub get_csv_data() {
 	}
 
 	for my $m ($ms..$me) {
-    #	    push @csv_list, sprintf("%s/%02d%02d\.csv", $data_dir, $y,$m);
-    	    push @csv_list, sprintf("%02d%02d\.csv", $y,$m);
+	    #	    push @csv_list, sprintf("%s/%02d%02d\.csv", $data_dir, $y,$m);
+	    my $csv=sprintf("%02d%02d\.csv", $y,$m);
+    	    push @csv_list, $csv if -e "$data_dir/$csv";
 	}
     }
     my $work_dir=getcwd();
@@ -283,51 +283,33 @@ sub get_csv_data() {
 # 2024-01-01,R,3.6.0,none,mpyatkov,load,7
 
     open IN, "<$tmp_csv";
-    # now store data according to the output need:
-    if($sortby eq "module") {
-	while(my $line=<IN>) {
-	    my @cols = split(',', $line);
-	    next if $line=~/^date/;
-	    next if $cols[0] lt $after;
-	    last if $cols[0] gt $before;
-	    # here we including everything
+    while(my $line=<IN>) {
+	my @cols = split(',', $line);
+	next if $line=~/^date/;
+	next if $cols[0] lt $after;
+	last if $cols[0] gt $before;
+# check if proj/module/user name is/are specified
+	next if (defined($opts{modname}) && ($cols[1] ne $opts{modname} && "$cols[1]/$cols[2]" ne $opts{modname} ));
+	next if (defined($opts{projname}) && ($cols[3] ne $opts{projname}));
+	next if (defined($opts{login}) && ($cols[4] ne $opts{login}));
+	if($sortby eq "module") {       	
 	    $mc_data->{$cols[1]}{ver_list}{$cols[2]}{proj_list}{$cols[3]}+=$cols[6];
 	    $mc_data->{$cols[1]}{ver_list}{$cols[2]}{user_list}{$cols[4]}+=$cols[6];
 	    $mc_data->{$cols[1]}{ver_list}{$cols[2]}{total_count}+=$cols[6];
 	    $mc_data->{$cols[1]}{total_count}+=$cols[6];	    
 	}
-	close IN;
-    }
-    elsif($sortby eq "proj") {
-	while(my $line=<IN>) {
-	    my @cols = split(',', $line);
-	    next if $line=~/^date/;
-	    next if $cols[0] lt $after;
-	    last if $cols[0] gt $before;
-#	    next if (defined($opts{projname}) && ($cols[3] ne $opts{projname})); 
-	    
-	    # here we including everything
+	elsif($sortby eq "proj") {
 	    $mc_data->{$cols[3]}{mod_list}{$cols[1] . "/" . $cols[2]}+=$cols[6];
 	    $mc_data->{$cols[3]}{user_list}{$cols[4]}+=$cols[6];
 	    $mc_data->{$cols[3]}{total_count}+=$cols[6];
 	}
-	close IN;
-    }
-    else {# #($sortby eq "user") {
-	while(my $line=<IN>) {
-	    my @cols = split(',', $line);
-	    next if $line=~/^date/;
-	    next if $cols[0] lt $after;
-	    last if $cols[0] gt $before;
-#	    next if (defined($opts{login}) && ($cols[4] ne $opts{login})); 
-
-	    # here we including everything
+	elsif($sortby eq "user") {
 	    $mc_data->{$cols[4]}{mod_list}{$cols[1] . "/" . $cols[2]}+=$cols[6];
 	    $mc_data->{$cols[4]}{proj_list}{$cols[3]}+=$cols[6];
 	    $mc_data->{$cols[4]}{total_count}+=$cols[6];
 	}
-	close IN;
-    }
+    } # end while loop
+    close IN;	
 
 }
 
@@ -392,18 +374,27 @@ sub output_result {
 
 } 
 
-sub print_by_module {
-    my ($sortby, $mc_data, $line_limit) = @_;
-    my $lc=0;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
+sub print_header {
+    my $header="SCC Usage sort by $opts{sortby} from $after_date to $before_date";
     print "=" x length($header);
     print "\n";
     print $header; 
     print "\n";
     print "=" x length($header);
-    print "\n\n";
-    
-	foreach my $m (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all versions of a module
+    print "\n";
+    my $header_spec = "";
+    $header_spec = " USER Login: $opts{login}\n" if defined($opts{login}); 
+    $header_spec .= " MODULE: $opts{modname}\n" if defined($opts{modname}); 
+    $header_spec .= " PROJECT: $opts{projname}\n" if defined($opts{projname});
+    print "$header_spec\n" if $header_spec ne "";
+    print "\n";
+}
+
+sub print_by_module {
+    my ($sortby, $mc_data, $line_limit) = @_;
+    my $lc=0;
+    print_header();    
+    foreach my $m (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all versions of a module
 	    $lc++;
 	    print "$m ($mc_data->{$m}{total_count})";
 	    print "\n";
@@ -422,14 +413,7 @@ sub print_by_module {
 
 sub printall_by_module {
     my ($sortby, $mc_data, $line_limit) = @_;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-    
+    print_header();    
 	foreach my $m (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all versions of a module
 	    print "$m ($mc_data->{$m}{total_count})";
 	    print "\n";
@@ -448,13 +432,7 @@ sub printall_by_module {
 sub print_verbose_by_module {
     my ($sortby, $mc_data, $line_limit) = @_;
     my $lc=0;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
+    print_header();
     
 	foreach my $m (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all versions of a module
 	    $lc++;
@@ -480,14 +458,7 @@ sub print_verbose_by_module {
 
 sub printall_verbose_by_module {
     my ($sortby, $mc_data) = @_;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-    
+    print_header();
 	foreach my $m (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all versions of a module
 	    print "$m ($mc_data->{$m}{total_count})";
 	    print "\n";
@@ -513,14 +484,9 @@ sub printall_verbose_by_module {
 sub print_by_proj {
     my ($sortby, $mc_data, $line_limit) = @_;
     my $lc=0;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
 
+    print_header();
+    
     foreach my $p (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all projects on SCC that ever used a module
 	    $lc++;
 	    print "$p ($mc_data->{$p}{total_count})";
@@ -532,14 +498,7 @@ sub print_by_proj {
 
 sub printall_by_proj {
     my ($sortby, $mc_data) = @_;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-
+    print_header();
     foreach my $p (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all projects on SCC that ever used a module
 	    print "$p ($mc_data->{$p}{total_count})";
 	    print "\n";
@@ -553,14 +512,7 @@ sub printall_by_proj {
 sub print_verbose_by_proj {
     my ($sortby, $mc_data, $line_limit) = @_;
     my $lc=0;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-
+    print_header();
     foreach my $p (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all projects on SCC that ever used a module
 	    $lc++;
 	    print "$p ($mc_data->{$p}{total_count})";
@@ -581,14 +533,7 @@ sub print_verbose_by_proj {
 
 sub printall_verbose_by_proj {
     my ($sortby, $mc_data) = @_;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-
+    print_header();
     foreach my $p (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all projects on SCC that ever used a module
 	    print "$p ($mc_data->{$p}{total_count})";
 	    print "\n";
@@ -608,14 +553,7 @@ sub printall_verbose_by_proj {
 sub print_by_user {
     my ($sortby, $mc_data, $line_limit) = @_;
     my $lc=0;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-
+    print_header();
     foreach my $u (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all module loads on SCC by user
 	    $lc++;
 	    print "$u ($mc_data->{$u}{total_count})";
@@ -627,14 +565,7 @@ sub print_by_user {
 
 sub printall_by_user {
     my ($sortby, $mc_data) = @_;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-
+    print_header();
     foreach my $u (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all module counts on SCC by a user
 	    print "$u ($mc_data->{$u}{total_count})";
 	    print "\n";
@@ -647,14 +578,9 @@ sub printall_by_user {
 sub print_verbose_by_user {
     my ($sortby, $mc_data, $line_limit) = @_;
     my $lc=0;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
 
+    print_header();
+    
     foreach my $u (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all projects on SCC that ever used a module
 	    $lc++;
 	    print "$u ($mc_data->{$u}{total_count})";
@@ -675,14 +601,7 @@ sub print_verbose_by_user {
 
 sub printall_verbose_by_user {
     my ($sortby, $mc_data) = @_;
-    my $header="SCC Usage sort by $sortby count from $after_date to $before_date:";
-    print "=" x length($header);
-    print "\n";
-    print $header; 
-    print "\n";
-    print "=" x length($header);
-    print "\n\n";
-
+    print_header();
     foreach my $u (sort{ $mc_data{$b}{total_count} <=> $mc_data{$a}{total_count} } keys %{$mc_data}) { #sort by total count of all projects on SCC that ever used a module
 	    print "$u ($mc_data->{$u}{total_count})";
 	    print "\n";
