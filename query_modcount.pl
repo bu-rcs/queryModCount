@@ -7,6 +7,7 @@ use Time::Seconds;
 #use lib "/usr/local/sge/scv/nodes";
 #use SCC_SGE_Data;
 use Cwd qw(getcwd);
+use File::Temp qw/tempfile tempdir/; # fix the issue https://github.com/bu-rcs/queryModCount/issues/3
 
 my %mc_data = ();
 
@@ -213,8 +214,8 @@ output_result($sortby, \%mc_data, $line_limit, $verbose);
 sub get_csv_data() {
     my ($after, $before, $sortby, $mc_data) = @_;
     my $data_dir='/projectnb/rcsmetrics/modcounter/data/daily/';
-    my $tmp_csv='/scratch/mc_all.csv';
- 
+    my $tmp_csv=tempdir . '/mc_all.csv';
+    
     # get the start month:
     my $starty=substr($after, 2, 2);
     my $startm=substr($after,5,2);
@@ -318,8 +319,8 @@ sub get_csv_data() {
 	    $mc_data->{$cols[4]}{total_count}+=$cols[6];
 	}
     } # end while loop
-    close IN;	
-
+    close IN;
+    system("rm $tmp_csv");
 }
 
 #####################
